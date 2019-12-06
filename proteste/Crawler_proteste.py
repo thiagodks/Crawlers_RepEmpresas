@@ -39,7 +39,7 @@ def getEmpresas():
 			print('\tlink: ', link)
 
 		numPag+=1
-		if numPag == 2: break
+		# if numPag == 2: break
 	
 	print("Numero de empresas coletadas: ", len(dicEmpresas))
 	print(dicEmpresas)
