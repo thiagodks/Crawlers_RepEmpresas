@@ -5,6 +5,11 @@ from termcolor import colored
 import requests
 import loadJS
 
+from pymongo import MongoClient
+from pymongo import errors
+
+import send_email as se
+
 def getEmpresas():
 
 	dicEmpresas = {}
@@ -50,13 +55,18 @@ def getReputacao(dicEmpresas):
 
 	dicRecl = {}
 	count = 1
+	aux = 0
 	for categoria in dicEmpresas:
+		aux += 1
+		# if aux == 5:  break
+		dicRecl[categoria] = {}
 		for nomeEmpresa in dicEmpresas[categoria]:
 
 			print(colored("Iteração: "+str(count)+" de:"+str(len(dicEmpresas)), 'yellow'))
 			count+=1
 
-			dicRecl[nomeEmpresa] = []
+			if nomeEmpresa not in dicRecl[categoria]:
+				dicRecl[categoria][nomeEmpresa] = []
 
 			link = dicEmpresas[categoria][nomeEmpresa]
 			print(colored('link: '+link, 'red'))
@@ -82,7 +92,9 @@ def getReputacao(dicEmpresas):
 			print(colored('Nota: ', 'blue'), nota)
 			print(colored('Numero de reclamaçoes: ', 'blue'), numReclam)
 			print(colored('Reclamações: ', 'blue'), reclamacoes)
-			dicRecl[nomeEmpresa].append([nota, numReclam, reclamacoes])
+			dicRecl[categoria][nomeEmpresa].append([nota, numReclam]+reclamacoes)
+			# print(dicRecl[categoria])
+			# input("")
 
 	print(dicRecl)
 	return dicRecl
@@ -95,7 +107,7 @@ def getComentarios():
 
 	numPag = 1
 	while True:
-
+		# if numPag == 5: break
 		link = 'https://www.proteste.org.br/reclame/lista-de-reclamacoes-publicas?sectors=555&page='+str(numPag)
 
 		print(colored("Pagina atual: "+str(numPag), 'yellow'))
@@ -121,11 +133,71 @@ def getComentarios():
 	
 	return dicComent
 
+def insertToDatabase(banco, dicRecl, dicComent):
+	
+	for categoria in dicRecl.keys():
+		for empresa in dicRecl[categoria]:
+			nomeEmpresa = str(empresa).strip()
+			print("Inserindo dados da empresa", nomeEmpresa)
+			print(dicRecl[categoria][empresa])
+			nota = dicRecl[categoria][empresa][0][0]
+			reclamacoes = int(dicRecl[categoria][empresa][0][1])
+			respondidas = int(dicRecl[categoria][empresa][0][2])
+			n_respondidas = int(dicRecl[categoria][empresa][0][3])
+			tempo_resposta = dicRecl[categoria][empresa][0][4]
+			print(str(nota)+'\n', str(reclamacoes)+'\n', str(n_respondidas)+'\n', tempo_resposta+'\n')
+			
+			jsonEmpresa = {
+				"nome": empresa,
+				"categoria": categoria,
+				"nota": nota,
+				"numReclamacoes": reclamacoes,
+				"numRespondidas": respondidas,
+				"numNaoRespondidas": n_respondidas,
+				"tempoResposta": tempo_resposta,
+				"reclamacoes": []
+			}
+
+			print("Inserindo comendarios da empresa: ", empresa)
+			for comentario in dicComent[empresa]:
+
+				titulo = comentario[0]
+				desc = comentario[1]
+				# status = comentario[2]
+				link = comentario[2]
+				print(titulo+'\n', desc+'\n', link+'\n')
+				jsonComentario = {
+					"titulo": titulo,
+					"descricao": desc,
+					"link": link
+				}
+
+				jsonEmpresa["reclamacoes"].append(jsonComentario)
+
+			banco.empresas.insert_one(jsonEmpresa)
+
 if __name__ == '__main__':	
 
-	dicEmpresas = getEmpresas()
-	dicRecl = getReputacao(dicEmpresas)
-	dicComent = getComentarios()
+	email = 'mrtrotta2010@gmail.com'
 
-	print(dicRecl+'\n\n\n\n')
-	print(dicComent)
+	try:
+		cliente = MongoClient('localhost', 27017)
+		banco = cliente.testetp2
+		se.sendEmail(email, "Iniciando Crawler TP2 - Proteste", "...")
+
+		dicEmpresas = getEmpresas()
+		se.sendEmail(email, "Crawler TP2 - Proteste (1/4)", "Obteve todas as empresas!")
+		dicRecl = getReputacao(dicEmpresas)
+		se.sendEmail(email, "Crawler TP2 - Proteste (2/4)", "Obteve todas as reclamações!")
+		dicComent = getComentarios()
+		se.sendEmail(email, "Crawler TP2 - Proteste (3/4)", "Obteve todas os comentarios!")
+
+		# print(dicRecl+'\n\n\n\n')
+		# print(dicComent)
+
+		insertToDatabase(banco, dicRecl, dicComent)
+		se.sendEmail(email, "Crawler TP2 - Proteste (4/4)", "Os dados foram inseridos no banco de dados!")
+
+	except Exception as e:
+		print(e)
+		se.sendEmail(email, "ERRO Crawler TP2- Proteste", "Ocorreu uma exceção:\n"+str(e))
